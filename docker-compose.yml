@@ -2,6 +2,7 @@ services:
   widesky:
     build: ./widesky
     container_name: widesky
+    restart: always
     depends_on:
       - db
     environment:
@@ -15,6 +16,7 @@ services:
   db:
     image: postgres:15
     container_name: widesky_db
+    restart: always
     environment:
       POSTGRES_DB: bluesky
       POSTGRES_USER: postgres

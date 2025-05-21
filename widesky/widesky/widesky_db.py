@@ -3,6 +3,7 @@
 import asyncio
 import os
 import logging
+from types import NoneType
 
 import httpx
 
@@ -11,15 +12,18 @@ from aiocache import cached, Cache
 from tenacity import retry, wait_exponential
 
 
-class WideSkyUserLookup:
-    def __init__(self):
-        pass
+CACHE_TTL = 3600
+RETRY_MULT = 1.1
+RETRY_MIN = 0.1
+RETRY_MAX = 10
 
+
+class WideSkyUserLookup:
     async def create(self):
         self.httpx_client = httpx.AsyncClient()
 
-    @cached(ttl=3600, cache=Cache.MEMORY, namespace="user_lookup")
-    @retry(wait=wait_exponential(multiplier=1, min=0.1, max=10))
+    @cached(ttl=CACHE_TTL, cache=Cache.MEMORY, namespace="user_lookup")
+    @retry(wait=wait_exponential(multiplier=RETRY_MULT, min=RETRY_MIN, max=RETRY_MAX))
     async def lookup_user(self, did: str) -> tuple:
         r = await self.httpx_client.get(f"https://plc.directory/{did}")
         if r.status_code == 200:
@@ -36,8 +40,10 @@ class WideSkyUserLookup:
 
 
 class WideSkyPSQL:
-    def __init__(self, num_workers=5, batch_size=100, batch_timeout=3.0):
-        self._process_queue = asyncio.Queue()
+    def __init__(
+        self, num_workers=5, batch_size=100, batch_timeout=3.0, queue_length=1000
+    ):
+        self._process_queue = asyncio.Queue(queue_length)
         self._workers = []
         self._num_workers = num_workers
         self._batch_size = batch_size
@@ -54,12 +60,12 @@ class WideSkyPSQL:
         PG_DB = os.getenv("PG_DB", "bluesky")
         PG_USER = os.getenv("PG_USER", "postgres")
         PG_PASS = os.getenv("PG_PASS", "postgres")
-        self.pool = AsyncConnectionPool(
+        self._pool = AsyncConnectionPool(
             conninfo=f"host={PG_HOST} dbname={PG_DB} user={PG_USER} password={PG_PASS}",
-            max_size=self._num_workers + 1,
+            max_size=self._num_workers,
             open=False,
         )
-        await self.pool.open()
+        await self._pool.open()
 
         await self._ensure_users_table(clear_database=clear_database)
         await self._ensure_posts_table(clear_database=clear_database)
@@ -68,22 +74,25 @@ class WideSkyPSQL:
 
     async def close(self):
         await self._user_lookup.close()
-        await self.conn.close()
+        await self._pool.close()
         for _ in self._workers:
             await self._process_queue.put(-1)
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._process_queue.task_done()
         logging.info("Postgres module closed gracefully.")
 
-    async def _worker(self, name: int):
-        user_batch = []
-        post_batch = []
-        repost_batch = []
-        like_batch = []
+    def metrics(self):
+        return self._process_queue.qsize()
+
+    async def _worker(self, name: str):
+        user_batch: list[str] = []
+        post_batch: list[dict] = []
+        repost_batch: list[dict] = []
+        like_batch: list[dict] = []
         last_flush = asyncio.get_event_loop().time()
         while True:
+            now = asyncio.get_event_loop().time()
             try:
-                now = asyncio.get_event_loop().time()
                 timeout = max(0, self._batch_timeout - (now - last_flush))
                 try:
                     queued_message = await asyncio.wait_for(
@@ -107,56 +116,72 @@ class WideSkyPSQL:
                         case "insert_like":
                             like_batch.append(queued_message["data"])
                             self._process_queue.task_done()
-                if len(user_batch) >= self._batch_size or (
-                    queued_message is None and user_batch
-                ):
-                    await self._batch_insert_user(user_batch)
-                    user_batch.clear()
-                    last_flush = now
-                if len(post_batch) >= self._batch_size or (
-                    queued_message is None and post_batch
-                ):
-                    await self._batch_insert_post(post_batch)
-                    post_batch.clear()
-                    last_flush = now
-                if len(repost_batch) >= self._batch_size or (
-                    queued_message is None and repost_batch
-                ):
-                    await self._batch_insert_repost(repost_batch)
-                    repost_batch.clear()
-                    last_flush = now
-                if len(like_batch) >= self._batch_size or (
-                    queued_message is None and like_batch
-                ):
-                    await self._batch_insert_like(like_batch)
-                    like_batch.clear()
-                    last_flush = now
-                if last_flush == now:
-                    logging.debug(
-                        f"{self._process_queue.qsize()} items in queue after a flush"
-                    )
+                (
+                    user_batch,
+                    post_batch,
+                    repost_batch,
+                    like_batch,
+                    last_flush,
+                ) = await self._process_batches(
+                    user_batch,
+                    post_batch,
+                    repost_batch,
+                    like_batch,
+                    queued_message is None,
+                    last_flush,
+                )
             except Exception as e:
                 logging.exception(f"Exception in {name} queue: {e}")
 
-    def insert_user(self, did: str) -> None:
+    async def _process_batches(
+        self,
+        user_batch: list[str],
+        post_batch: list[dict],
+        repost_batch: list[dict],
+        like_batch: list[dict],
+        commit: bool,
+        last_flush: float,
+    ) -> tuple[list[str], list[dict], list[dict], list[dict], float]:
+        now = asyncio.get_event_loop().time()
+        if len(user_batch) >= self._batch_size or (commit and user_batch):
+            await self._batch_insert_user(user_batch)
+            user_batch.clear()
+            last_flush = now
+        if len(post_batch) >= self._batch_size or (commit and post_batch):
+            await self._batch_insert_post(post_batch)
+            post_batch.clear()
+            last_flush = now
+        if len(repost_batch) >= self._batch_size or (commit and repost_batch):
+            await self._batch_insert_repost(repost_batch)
+            repost_batch.clear()
+            last_flush = now
+        if len(like_batch) >= self._batch_size or (commit and like_batch):
+            await self._batch_insert_like(like_batch)
+            like_batch.clear()
+            last_flush = now
+        if last_flush == now:
+            logging.debug(f"{self._process_queue.qsize()} items in queue after a flush")
+        return user_batch, post_batch, repost_batch, like_batch, last_flush
+
+    def _insert_user(self, did: str) -> None:
         self._process_queue.put_nowait({"request": "insert_user", "data": did})
 
-    def insert_post(self, storage_frame: dict) -> None:
+    def _insert_post(self, storage_frame: dict) -> None:
         self._process_queue.put_nowait(
             {"request": "insert_post", "data": storage_frame}
         )
 
-    def insert_repost(self, storage_frame: dict) -> None:
+    def _insert_repost(self, storage_frame: dict) -> None:
         self._process_queue.put_nowait(
             {"request": "insert_repost", "data": storage_frame}
         )
 
-    def insert_like(self, storage_frame: dict) -> None:
+    def _insert_like(self, storage_frame: dict) -> None:
         self._process_queue.put_nowait(
             {"request": "insert_like", "data": storage_frame}
         )
 
-    async def _batch_insert_user(self, batch: list[dict]) -> None:
+    async def _batch_insert_user(self, batch: list[str]) -> None:
         if not batch:
             return
         processed_batch = []
@@ -173,7 +198,7 @@ class WideSkyPSQL:
                 )
         if len(processed_batch) > 0:
             try:
-                async with self.pool.connection() as conn:
+                async with self._pool.connection() as conn:
                     async with conn.cursor() as cur:
                         await cur.executemany(
                             """
@@ -201,7 +226,7 @@ class WideSkyPSQL:
         if not batch:
             return
         try:
-            async with self.pool.connection() as conn:
+            async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.executemany(
                         """
@@ -231,7 +256,7 @@ class WideSkyPSQL:
         if not batch:
             return
         try:
-            async with self.pool.connection() as conn:
+            async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.executemany(
                         """
@@ -254,7 +279,7 @@ class WideSkyPSQL:
         if not batch:
             return
         try:
-            async with self.pool.connection() as conn:
+            async with self._pool.connection() as conn:
                 async with conn.cursor() as cur:
                     await cur.executemany(
                         """
@@ -274,7 +299,7 @@ class WideSkyPSQL:
             logging.exception(f"Batch insert_post failed: {e} — {batch[:3]}")
 
     async def _ensure_users_table(self, clear_database=False) -> None:
-        async with self.pool.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 if clear_database:
                     await cur.execute("""
@@ -291,7 +316,7 @@ class WideSkyPSQL:
             logging.info("Ensured users table exists")
 
     async def _ensure_likes_table(self, clear_database=False) -> None:
-        async with self.pool.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 if clear_database:
                     await cur.execute("""
@@ -311,7 +336,7 @@ class WideSkyPSQL:
             logging.info("Ensured likes table exists")
 
     async def _ensure_posts_table(self, clear_database=False) -> None:
-        async with self.pool.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 if clear_database:
                     await cur.execute("""
@@ -344,7 +369,7 @@ class WideSkyPSQL:
             logging.info("Ensured posts table exists")
 
     async def _ensure_reposts_table(self, clear_database=False) -> None:
-        async with self.pool.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 if clear_database:
                     await cur.execute("""
@@ -364,7 +389,7 @@ class WideSkyPSQL:
             logging.info("Ensured reposts table exists")
 
     async def _check_user(self, did: str) -> tuple | None:
-        async with self.pool.connection() as conn:
+        async with self._pool.connection() as conn:
             async with conn.cursor() as cur:
                 await cur.execute("SELECT 1 FROM users WHERE did = %s LIMIT 1", (did,))
                 user_exists = await cur.fetchone()
