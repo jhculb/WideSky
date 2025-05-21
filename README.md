@@ -35,30 +35,24 @@ The schema for Postgres database is as follows:
 | cid              | created_at               | did  | commit | subject_cid | subject_uri |
 | ---------------- | ------------------------ | ---- | ------ | ----------- | ----------- |
 | TEXT PRIMARY KEY | TIMESTAMP WITH TIME ZONE | TEXT | TEXT   | TEXT        | TEXT        |
-
-## (Planned) Features
-### Current Features
+## Technical Information
+### (Planned) Features
+#### Current Features
 * Async functionality
 * Exponential backoff for reconnections to firehose and reattempts for plc.directory
 * Rotating Logging bind mounted to a widesky/logs folder
 * Async workers for processing and batching to Postgres
 * Batched Postgres saving
 
-### To-do
-
-* Implement graph.list post type
-* Implement embed types
-    * images#main
-    * selectionQuote
-    * secret
-    * Others I have not seen?
-* Improve error handling
-* Add testing
-* Capture PostgreSQL logs in logs/postgres
-* Add webserver with metrics and ability to configure capture protocols
-* Integrate with a crawler to reach back for full activity records of active users where not present already in data
+#### To-do
+To-dos are captured in the [issues](https://github.com/jhculb/WideSky/issues).
 * Add option to prevent HTTPX logging clogging up the logs
 * Capture delete and other non-create events
+
+### Logging
+Logging of the WideSky python module can be accessed in a folder that is created at runtime under `./logs/widesky`. There is a rotating queued file handler instantiated in `widesky.py`.
+
+Logging of the Postgres database can be accessed by running `docker logs widesky_db`. 
 
 ## Acknowledgements
 Thanks particularly to David Peck whose work I have captured in the firehose_utils.py file, who implemented a lovely decoding of the CBOR protocol. Please see his work here: https://gist.github.com/davepeck/8ada49d42d44a5632b540a4093225719 and https://github.com/davepeck.

@@ -15,11 +15,14 @@ from widesky_processor import WideSkyProcessor
 FIREHOSE_URL = "wss://bsky.network/xrpc/com.atproto.sync.subscribeRepos"
 FIREHOSE_RECONNECT_BASE_DELAY = 5
 FIREHOSE_RECONNECT_MAX_DELAY = 60
+FIREHOSE_RECONNECT_MULT_BASE = 2
+FIREHOSE_RECONNECT_MAX_RECONNECTS = 5
 
 LOG_DIR = "/app/logs"
 
 
 async def firehose_listener(processor) -> None:
+    reconnect_attempt = 0
     while True:
         try:
             logging.info("Connecting to Bluesky firehose...")
@@ -27,7 +30,6 @@ async def firehose_listener(processor) -> None:
                 FIREHOSE_URL, ping_interval=5, ping_timeout=10, close_timeout=5
             ) as ws:
                 logging.info("Connected to the Bluesky Firehose.")
-                reconnect_attempt = 0
 
                 while True:
                     msg = await ws.recv()
@@ -39,12 +41,21 @@ async def firehose_listener(processor) -> None:
             logging.exception(f"Unexpected error in firehose listener: {e}")
 
         reconnect_delay = min(
-            FIREHOSE_RECONNECT_BASE_DELAY * (2**reconnect_attempt),
+            FIREHOSE_RECONNECT_BASE_DELAY
+            * (FIREHOSE_RECONNECT_MULT_BASE**reconnect_attempt),
             FIREHOSE_RECONNECT_MAX_DELAY,
         )
         reconnect_attempt += 1
-        logging.info(f"Reconnecting in {reconnect_delay:.1f} seconds...")
-        await asyncio.sleep(reconnect_delay)
+        if reconnect_attempt < FIREHOSE_RECONNECT_MAX_RECONNECTS:
+            logging.warning(
+                f"Reconnect attempt {reconnect_attempt} Reconnecting in {reconnect_delay:.1f} seconds..."
+            )
+            await asyncio.sleep(reconnect_delay)
+        else:
+            logging.exception(
+                f"Maximum reconnect attempts ({FIREHOSE_RECONNECT_MAX_RECONNECTS}) reached, exiting."
+            )
+            break
 
 
 async def shutdown_handler() -> None:
@@ -70,7 +81,7 @@ async def main() -> None:
         logging.info("Firehose listener cancelled.")
 
     await processor.close()
-    logging.info("Shutting down gracefully.")
+    logging.info("Shut down gracefully.")
 
 
 def setup_logging() -> QueueListener:
