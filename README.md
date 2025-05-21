@@ -12,7 +12,7 @@ A containerised Python based listener that ingests the Bluesky firehose and expo
 3. Run '''docker compose up'''
 4. Connect via your preferred method to the PostgreSQL database hosted locally at port 5432
 
-*Please note:* that the bind mounted volumes are difficult to delete, due to security features within Docker. 
+*Please note:* that the bind mounted volumes are difficult to delete, due to security features within Docker.
 You will need to use a command such as `docker exec --privileged --user root <CONTAINER_ID> chown -R "$(id -u):$(id -g)" <TARGET_DIR>`, more details [here](https://stackoverflow.com/questions/42423999/cant-delete-file-created-via-docker).
 
 *Please note:* Some instability has been observed when running WideSky for the first time. If the logs show connection errors between the Python and Postgres containers after building the project for the first time, please restart the application.
@@ -52,7 +52,7 @@ To-dos are captured in the [issues](https://github.com/jhculb/WideSky/issues).
 ### Logging
 Logging of the WideSky python module can be accessed in a folder that is created at runtime under `./logs/widesky`. There is a rotating queued file handler instantiated in `widesky.py`.
 
-Logging of the Postgres database can be accessed by running `docker logs widesky_db`. 
+Logging of the Postgres database can be accessed by running `docker logs widesky_db`.
 
 ## Acknowledgements
 Thanks particularly to David Peck whose work I have captured in the firehose_utils.py file, who implemented a lovely decoding of the CBOR protocol. Please see his work here: https://gist.github.com/davepeck/8ada49d42d44a5632b540a4093225719 and https://github.com/davepeck.

@@ -1,0 +1,141 @@
+[build-system]
+requires = ["poetry-core=2.1.3"]
+build-backend = "poetry.core.masonry.api"
+
+[project]
+authors = [{ name = "Jack H. Culbert", email = "jack.culbert@gesis.org" }]
+name = "WideSky"
+license = { text = "GPL-3.0-or-later" }
+version = "1.0.0"
+maintainers = [{ name = "Jack H. Culbert", email = "jack.culbert@gesis.org" }]
+description = "Tool for Bulk collection of the BSky Firehose into Postgres"
+readme = "README.md"
+
+[tool.poetry]
+packages = [{ include = "WideSky", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.13"
+websockets = "^15.0.1"
+psycopg = {extras = ["async", "binary", "pool"], version = "^3.2.9"}
+httpx-ws = "^0.7.2"
+httpx = "^0.28.1"
+tenacity = "^9.1.2"
+aiocache = "^0.12.3"
+
+[tool.poetry.group.dev]
+optional = true
+
+[tool.poetry.group.dev.dependencies]
+bandit = "^1.8.3"
+check-manifest = "^0.50"
+pytest-cov = "^6.1.1"
+pytest-mock = "^3.14.0"
+pytest = "^8.3.5"
+shellcheck-py = "^0.10.0.1"
+coverage = { extras = ["toml"], version = "^7.8.0" }
+ruff = "^0.11.10"
+
+[tool.poetry.group.spark]
+optional = true
+
+[tool.poetry.group.spark.dependencies]
+pyspark = "^3.5.5"
+
+[tool.ruff]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".git-rewrite",
+    ".hg",
+    ".ipynb_checkpoints",
+    ".mypy_cache",
+    ".nox",
+    ".pants.d",
+    ".pyenv",
+    ".pytest_cache",
+    ".pytype",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "site-packages",
+    "venv",
+]
+
+line-length = 120
+indent-width = 4
+
+target-version = "py313"
+
+extend-include = ["*.ipynb"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "B", "W", "C901", "Q"]
+ignore = []
+
+fixable = ["ALL"]
+unfixable = ["B"]
+
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.format]
+quote-style = "double"
+
+indent-style = "space"
+
+skip-magic-trailing-comma = false
+
+line-ending = "auto"
+
+docstring-code-format = false
+
+docstring-code-line-length = "dynamic"
+
+[tool.bandit]
+exclude_dirs = ["build", "dist", "tests", "scripts"]
+number = 4
+recursive = true
+targets = "src"
+
+[tool.coverage.run]
+branch = true
+disable_warnings = ['no-data-collected']
+
+[tool.coverage.report]
+fail_under = 100
+
+[tool.pyright]
+include = ["src"]
+exclude = ["**/node_modules", "**/__pycache__"]
+
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+pythonVersion = "3.13"
+pythonPlatform = "Linux"
+
+executionEnvironments = [{ root = "src" }]
+
+[tool.pytest.ini_options]
+addopts = "--cov-report xml:coverage.xml --cov-report term --cov src --cov-fail-under 0 --cov-append -m 'not integration'"
+pythonpath = ["src"]
+testpaths = "tests"
+junit_family = "xunit2"
+markers = [
+    "integration: marks as integration test",
+    "notebooks: marks as notebook test",
+    "gpu: marks as gpu test",
+    "spark: marks tests which need Spark",
+    "slow: marks tests as slow",
+    "unit: fast offline tests",
+]

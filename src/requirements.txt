@@ -1,0 +1,6 @@
+websockets
+psycopg[binary,pool,async]
+httpx-ws
+httpx
+tenacity
+aiocache
