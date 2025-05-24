@@ -33,6 +33,7 @@ RUN apt-get update \
 # the Docker socket if "overrideCommand": false is set in devcontainer.json.
 # The script will also execute CMD if you need to alter startup behaviors.
 ENTRYPOINT [ "/usr/local/share/docker-init.sh" ]
+
 CMD [ "sleep", "infinity" ]
 
 FROM python_base AS python_dind
