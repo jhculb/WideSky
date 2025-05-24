@@ -11,7 +11,7 @@ services:
       PG_USER: postgres
       PG_PASS: postgres
     volumes:
-      - ${HOST_PROJECT_PATH}/logs/widesky:/app/logs
+      - ${HOST_PROJECT_PATH}/logs/widesky_2:/app/logs
 
   db:
     image: postgres:15
