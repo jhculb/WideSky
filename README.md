@@ -5,7 +5,7 @@ A containerised Python based listener that ingests the Bluesky firehose and expo
 ## Statement of Need
 [BlueSky](https://bsky.app/) is an up-an-coming social media site based on the AT protocol, which may merit further study. However the ATProtocol can be difficult to interpret and code around, therefore this application is designed to ease the barrier of entry for bulk collection and analysis of BlueSky data.
 
-## How to use
+## How to Use
 
 1. Install Docker
 2. Navigate to the root folder of the repository
@@ -16,6 +16,9 @@ A containerised Python based listener that ingests the Bluesky firehose and expo
 You will need to use a command such as `docker exec --privileged --user root <CONTAINER_ID> chown -R "$(id -u):$(id -g)" <TARGET_DIR>`, more details [here](https://stackoverflow.com/questions/42423999/cant-delete-file-created-via-docker).
 
 *Please note:* Some instability has been observed when running WideSky for the first time. If the logs show connection errors between the Python and Postgres containers after building the project for the first time, please restart the application.
+
+## Use Cases
+This tool can be used to collect bulk bluesky data in a csv format, allowing for archiving and network, textual and other content analyses to be performed on the output data.
 
 ## Output
 The schema for Postgres database is as follows:
