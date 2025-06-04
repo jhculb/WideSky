@@ -1,14 +1,16 @@
-FROM python:3.13-slim
+FROM python:3.13-slim AS project-base
 
-WORKDIR /app
+ARG POETRY_VERSION=2.1.3
 
 COPY poetry.lock poetry.toml /app/
-RUN python -m pip install --upgrade pip &&\
-    pip install poetry==2.1.3 &&\
-    poetry install --only dev --no-root &&\
-    pip install pre-commit==4.2.0 &&\
-    pre-commit install-hooks
+RUN python -m pip install --upgrade pip && pip install poetry==2.1.3
 
-COPY widesky /app/widesky
+FROM project-base AS widesky-base
 
-CMD ["python", "/app/widesky/widesky.py"]
+WORKDIR /widesky/
+
+COPY ./src/widesky/widesky ./
+
+RUN poetry install --without dev
+
+CMD ["python", "/widesky/widesky/widesky.py"]

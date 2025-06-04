@@ -1,11 +1,23 @@
 // For format details, see https://aka.ms/devcontainer.json. For config options, see the README at:
 // https://github.com/microsoft/vscode-dev-containers/tree/v0.222.0/containers/python-3-miniconda
 {
-    "name": "Python Environment",
+    "name": "Python Environment with Docker-in-docker",
     "build": {
         "dockerfile": "Dockerfile",
         "context": ".."
     },
+    "remoteEnv": {
+        // the original host directory which is needed for volume
+        // mount commands from inside the container (Docker in Docker)
+        "HOST_PROJECT_PATH": "${localWorkspaceFolder}"
+    },
+    "runArgs": [
+        "--init"
+    ],
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker-host.sock,type=bind"
+    ],
+    "overrideCommand": false,
     "customizations": {
         "vscode": {
             "extensions": [
@@ -39,5 +51,6 @@
         }
     },
     // TODO: Inject precommit as env
-    "onCreateCommand": "sudo chown -R vscode .git && pip install pre-commit==4.2.0 && pre-commit install-hooks"
+    "onCreateCommand": "sudo chown -R vscode .git && pip install pre-commit==4.2.0 && pre-commit install-hooks",
+    "remoteUser": "vscode"
 }
