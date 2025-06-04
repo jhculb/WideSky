@@ -1,6 +1,8 @@
 services:
   widesky:
-    build: ./src/widesky
+    build:
+      image: ./src/widesky/Dockerfile
+      context: ./
     container_name: widesky
     restart: always
     depends_on:
