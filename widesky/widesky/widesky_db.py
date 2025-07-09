@@ -26,9 +26,10 @@ class WideSkyUserLookup:
             aka = r.json()["alsoKnownAs"]
             return aka[0], aka
         else:
-            raise ConnectionError(
-                f"Lookup user was unable to access plc.directory for did {did}"
+            logging.error(
+                f"Lookup user was unable to access plc.directory for did {did}, returning empty string with description"
             )
+            return "", [f"{r.status_code} was response from plc.directory for this did"]
 
     async def close(self):
         await self.httpx_client.aclose()
@@ -36,12 +37,15 @@ class WideSkyUserLookup:
 
 
 class WideSkyPSQL:
-    def __init__(self, num_workers=5, batch_size=100, batch_timeout=3.0):
+    def __init__(
+        self, num_workers=5, batch_size=100, batch_timeout=3.0, pool_timeout_on_close=5
+    ):
         self._process_queue = asyncio.Queue()
         self._workers = []
         self._num_workers = num_workers
         self._batch_size = batch_size
         self._batch_timeout = batch_timeout
+        self._pool_timeout_on_close = pool_timeout_on_close
         for i in range(num_workers):
             worker = asyncio.create_task(self._worker(f"worker-{i}"))
             self._workers.append(worker)
@@ -68,14 +72,14 @@ class WideSkyPSQL:
 
     async def close(self):
         await self._user_lookup.close()
-        await self.conn.close()
+        await self.pool.close(self._pool_timeout_on_close)
         for _ in self._workers:
             await self._process_queue.put(-1)
         await asyncio.gather(*self._workers, return_exceptions=True)
         self._process_queue.task_done()
         logging.info("Postgres module closed gracefully.")
 
-    async def _worker(self, name: int):
+    async def _worker(self, name: str):
         user_batch = []
         post_batch = []
         repost_batch = []
@@ -156,7 +160,7 @@ class WideSkyPSQL:
             {"request": "insert_like", "data": storage_frame}
         )
 
-    async def _batch_insert_user(self, batch: list[dict]) -> None:
+    async def _batch_insert_user(self, batch: list[str]) -> None:
         if not batch:
             return
         processed_batch = []
